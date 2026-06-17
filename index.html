@@ -475,13 +475,11 @@
             ${!hasTip ? `<div class="tip-empty">
                 <div class="icon">✏️</div>
                 <p>暂无解析</p>
-                <div class="tip-edit-hint">用 <code>python modules/add_notes.py edit ${q.id}</code> 添加</div>
             </div>` : `
                 <button class="tip-btn ${isShowing ? 'active' : ''}" onclick="toggleTip()">
                     ${isShowing ? '▾ 收起解析' : '▸ 查看解析'}
                 </button>
                 <div class="tip-content ${isShowing ? '' : 'hidden'}">${q.explanation}</div>
-                <div class="tip-status">ID: ${q.id} · ${q.explanation.length} 字</div>
             `}
         </div>`;
     }
