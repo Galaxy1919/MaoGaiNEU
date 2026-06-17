@@ -178,12 +178,74 @@
         .settings-bar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
         .settings-bar input[type="checkbox"] { cursor: pointer; }
 
+        /* 左右两栏布局 */
+        .question-layout {
+            display: flex; gap: 16px; align-items: flex-start;
+        }
+        .question-main {
+            flex: 1; min-width: 0;
+        }
+        .question-card {
+            background: #fff; border-radius: 12px; padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 16px;
+        }
+
+        /* 右侧解析面板 */
+        .tip-panel {
+            width: 320px; flex-shrink: 0; position: sticky; top: 20px;
+            background: #fff; border-radius: 12px; padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border-left: 4px solid #4f46e5;
+            max-height: calc(100vh - 80px); overflow-y: auto;
+        }
+        .tip-panel .tip-header {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 16px; font-weight: 600; color: #1a1a2e; margin-bottom: 16px;
+        }
+        .tip-panel .tip-header .icon { font-size: 20px; }
+        .tip-panel .tip-empty {
+            text-align: center; padding: 20px 0; color: #aaa; font-size: 13px;
+        }
+        .tip-panel .tip-empty .icon { font-size: 32px; margin-bottom: 8px; }
+        .tip-panel .tip-content {
+            font-size: 14px; line-height: 1.8; color: #333;
+            white-space: pre-wrap; word-break: break-word;
+            animation: tipFadeIn 0.3s ease;
+        }
+        .tip-panel .tip-content.hidden { display: none; }
+        @keyframes tipFadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .tip-btn {
+            display: block; width: 100%; padding: 10px; margin-top: 12px;
+            border: 2px solid #4f46e5; border-radius: 8px;
+            background: #fff; color: #4f46e5; font-size: 14px; cursor: pointer;
+            transition: all 0.2s; text-align: center;
+        }
+        .tip-btn:hover { background: #4f46e5; color: #fff; }
+        .tip-btn.active { background: #4f46e5; color: #fff; }
+        .tip-panel .tip-status {
+            font-size: 12px; color: #999; margin-top: 12px; text-align: center;
+        }
+        .tip-panel .tip-edit-hint {
+            font-size: 11px; color: #ccc; margin-top: 8px; text-align: center;
+        }
+        .tip-panel .tip-edit-hint code {
+            font-size: 10px; background: #f5f5f5; padding: 2px 6px; border-radius: 3px;
+        }
+
+        @media (max-width: 900px) {
+            .question-layout { flex-direction: column; }
+            .tip-panel { width: 100%; position: static; }
+        }
         @media (max-width: 600px) {
             .container { padding: 12px; }
             .chapter-grid { grid-template-columns: 1fr; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .nav { gap: 4px; }
             .nav-btn { padding: 6px 10px; font-size: 12px; }
+            .tip-panel { width: 100%; }
         }
     </style>
 </head>
@@ -199,6 +261,7 @@
         questionIndex: 0,
         selectedOptions: [],
         answered: false,
+        showTip: false,
         // 随机测试
         testChapter: 0,
         testCount: 20,
@@ -339,7 +402,9 @@
         const isMulti = q.type === 'multi';
         const optionKeys = Object.keys(q.options);
 
-        return `<div class="question-card">
+        return `<div class="question-layout">
+            <div class="question-main">
+                <div class="question-card">
             <div class="question-meta">
                 <span class="tag ${isMulti ? 'multi' : ''}">${isMulti ? '多选' : '单选'}</span>
                 <span class="question-num">ID: ${q.id}</span>
@@ -366,6 +431,9 @@
             ${isMulti && !state.answered ? `<button class="submit-btn" ${state.selectedOptions.length < 2 ? 'disabled' : ''} onclick="submitMulti()">确认提交（已选${state.selectedOptions.length}项）</button>` : ''}
             ${state.answered ? renderResult(q) : ''}
             ${renderActionBar(q, isFav)}
+                </div>
+            </div>
+            ${renderTipPanel(q)}
         </div>`;
     }
 
@@ -394,6 +462,33 @@
             </button>
             <button class="action-btn primary" onclick="nextQuestion()">下一题</button>
         </div>`;
+    }
+
+    function renderTipPanel(q) {
+        const hasTip = q.explanation && q.explanation.length > 0;
+        const isShowing = state.showTip;
+        return `<div class="tip-panel">
+            <div class="tip-header">
+                <span class="icon">📖</span>
+                <span>解析与笔记</span>
+            </div>
+            ${!hasTip ? `<div class="tip-empty">
+                <div class="icon">✏️</div>
+                <p>暂无解析</p>
+                <div class="tip-edit-hint">用 <code>python modules/add_notes.py edit ${q.id}</code> 添加</div>
+            </div>` : `
+                <button class="tip-btn ${isShowing ? 'active' : ''}" onclick="toggleTip()">
+                    ${isShowing ? '▾ 收起解析' : '▸ 查看解析'}
+                </button>
+                <div class="tip-content ${isShowing ? '' : 'hidden'}">${q.explanation}</div>
+                <div class="tip-status">ID: ${q.id} · ${q.explanation.length} 字</div>
+            `}
+        </div>`;
+    }
+
+    function toggleTip() {
+        state.showTip = !state.showTip;
+        render();
     }
 
     function renderRandomSetup() {
@@ -567,6 +662,7 @@
         state.page = page;
         state.selectedOptions = [];
         state.answered = false;
+        state.showTip = false;
         if (page === 'search') { state.searchResults = []; state.searchKeyword = ''; }
         render();
     }
@@ -578,6 +674,7 @@
         state.questionIndex = lastPosition['ch' + chapter] || 0;
         state.selectedOptions = [];
         state.answered = false;
+        state.showTip = false;
         render();
     }
 
@@ -639,6 +736,7 @@
             state.questionIndex++;
             state.selectedOptions = [];
             state.answered = false;
+            state.showTip = false;
             lastPosition['ch' + state.chapter] = state.questionIndex;
             saveAll();
             render();
@@ -650,6 +748,7 @@
             state.questionIndex--;
             state.selectedOptions = [];
             state.answered = false;
+            state.showTip = false;
             lastPosition['ch' + state.chapter] = state.questionIndex;
             saveAll();
             render();
@@ -678,6 +777,7 @@
         state.questionIndex = chQuestions.findIndex(cq => cq.id === id);
         state.selectedOptions = [];
         state.answered = false;
+        state.showTip = false;
         render();
     }
 
