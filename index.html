@@ -264,6 +264,7 @@
         selectedOptions: [],
         answered: false,
         showTip: false,
+        practiceSource: 'chapter', // 'chapter' | 'favorites' | 'wrong'
         // 随机测试
         testChapter: 0,
         testCount: 20,
@@ -312,6 +313,12 @@
 
     function getChapterQuestions(ch) {
         return questions.filter(q => q.chapter === ch);
+    }
+
+    function getPracticeQuestions() {
+        if (state.practiceSource === 'favorites') return questions.filter(q => favorites.includes(q.id));
+        if (state.practiceSource === 'wrong') return questions.filter(q => wrongBook.includes(q.id));
+        return getChapterQuestions(state.chapter);
     }
 
     function getChapters() {
@@ -378,12 +385,15 @@
     }
 
     function renderPractice() {
-        const chQuestions = getChapterQuestions(state.chapter);
+        const chQuestions = getPracticeQuestions();
         if (chQuestions.length === 0) { navigate('home'); return; }
 
         const q = chQuestions[state.questionIndex];
         const isFav = favorites.includes(q.id);
         const pct = Math.round((state.questionIndex + 1) / chQuestions.length * 100);
+        const sourceLabel = state.practiceSource === 'favorites' ? '收藏夹' :
+                            state.practiceSource === 'wrong' ? '错题本' :
+                            '第' + state.chapter + '章';
 
         app.innerHTML = renderNav() + `
             <div class="settings-bar">
@@ -395,7 +405,7 @@
             <div class="progress-top">
                 <span>${state.questionIndex + 1} / ${chQuestions.length}</span>
                 <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
-                <span>第${state.chapter}章</span>
+                <span>${sourceLabel}</span>
             </div>
             ${renderQuestionCard(q, isFav)}`;
     }
@@ -594,23 +604,31 @@
     function renderFavorites() {
         const favQuestions = questions.filter(q => favorites.includes(q.id));
         app.innerHTML = renderNav() + `
-            <div class="page-header"><h2>收藏夹</h2><p>共 ${favQuestions.length} 题</p></div>
-            ${favQuestions.length === 0 ? '<div class="empty-state"><div class="icon">⭐</div><p>暂无收藏题目</p></div>' :
-            favQuestions.map(q => `<div class="question-list-item" onclick="practiceQuestion(${q.id})">
+            <div class="page-header">
+                <h2>收藏夹</h2>
+                <p>共 ${favQuestions.length} 题</p>
+            </div>
+            ${favQuestions.length === 0 ? '<div class="empty-state"><div class="icon">⭐</div><p>暂无收藏题目</p></div>' : `
+            <button class="submit-btn" style="margin-bottom:16px" onclick="startFavPractice()">开始刷收藏题</button>
+            ${favQuestions.map(q => `<div class="question-list-item" onclick="practiceQuestion(${q.id})">
                 <span class="q-text">${q.id}. ${q.question.replace('(    )', '____')}</span>
                 <span class="tag ${q.type === 'multi' ? 'multi' : ''}">${q.type === 'multi' ? '多选' : '单选'}</span>
-            </div>`).join('')}`;
+            </div>`).join('')}`}`;
     }
 
     function renderWrong() {
         const wrongQuestions = questions.filter(q => wrongBook.includes(q.id));
         app.innerHTML = renderNav() + `
-            <div class="page-header"><h2>错题本</h2><p>共 ${wrongQuestions.length} 题，答对后自动移出</p></div>
-            ${wrongQuestions.length === 0 ? '<div class="empty-state"><div class="icon">🎉</div><p>太棒了，没有错题！</p></div>' :
-            wrongQuestions.map(q => `<div class="question-list-item" onclick="practiceQuestion(${q.id})">
+            <div class="page-header">
+                <h2>错题本</h2>
+                <p>共 ${wrongQuestions.length} 题，答对后自动移出</p>
+            </div>
+            ${wrongQuestions.length === 0 ? '<div class="empty-state"><div class="icon">🎉</div><p>太棒了，没有错题！</p></div>' : `
+            <button class="submit-btn" style="margin-bottom:16px" onclick="startWrongPractice()">开始刷错题</button>
+            ${wrongQuestions.map(q => `<div class="question-list-item" onclick="practiceQuestion(${q.id})">
                 <span class="q-text">${q.id}. ${q.question.replace('(    )', '____')}</span>
                 <span class="tag ${q.type === 'multi' ? 'multi' : ''}">${q.type === 'multi' ? '多选' : '单选'}</span>
-            </div>`).join('')}`;
+            </div>`).join('')}`}`;
     }
 
     function renderSearch() {
@@ -673,6 +691,7 @@
     function startPractice(chapter) {
         state.page = 'practice';
         state.chapter = chapter;
+        state.practiceSource = 'chapter';
         // 恢复上次位置
         state.questionIndex = lastPosition['ch' + chapter] || 0;
         state.selectedOptions = [];
@@ -734,13 +753,15 @@
     }
 
     function nextQuestion() {
-        const chQuestions = getChapterQuestions(state.chapter);
+        const chQuestions = getPracticeQuestions();
         if (state.questionIndex < chQuestions.length - 1) {
             state.questionIndex++;
             state.selectedOptions = [];
             state.answered = false;
             state.showTip = false;
-            lastPosition['ch' + state.chapter] = state.questionIndex;
+            if (state.practiceSource === 'chapter') {
+                lastPosition['ch' + state.chapter] = state.questionIndex;
+            }
             saveAll();
             render();
         }
@@ -752,7 +773,9 @@
             state.selectedOptions = [];
             state.answered = false;
             state.showTip = false;
-            lastPosition['ch' + state.chapter] = state.questionIndex;
+            if (state.practiceSource === 'chapter') {
+                lastPosition['ch' + state.chapter] = state.questionIndex;
+            }
             saveAll();
             render();
         }
@@ -776,8 +799,33 @@
         if (!q) return;
         state.page = 'practice';
         state.chapter = q.chapter;
+        state.practiceSource = 'chapter';
         const chQuestions = getChapterQuestions(q.chapter);
         state.questionIndex = chQuestions.findIndex(cq => cq.id === id);
+        state.selectedOptions = [];
+        state.answered = false;
+        state.showTip = false;
+        render();
+    }
+
+    function startFavPractice() {
+        const favQuestions = questions.filter(q => favorites.includes(q.id));
+        if (favQuestions.length === 0) return;
+        state.page = 'practice';
+        state.practiceSource = 'favorites';
+        state.questionIndex = 0;
+        state.selectedOptions = [];
+        state.answered = false;
+        state.showTip = false;
+        render();
+    }
+
+    function startWrongPractice() {
+        const wrongQuestions = questions.filter(q => wrongBook.includes(q.id));
+        if (wrongQuestions.length === 0) return;
+        state.page = 'practice';
+        state.practiceSource = 'wrong';
+        state.questionIndex = 0;
         state.selectedOptions = [];
         state.answered = false;
         state.showTip = false;
