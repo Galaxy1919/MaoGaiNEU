@@ -59,6 +59,7 @@
             background: #ede9fe; color: #6d28d9;
         }
         .question-meta .tag.multi { background: #fef3c7; color: #d97706; }
+        .question-meta .tag.disputed { background: #fee2e2; color: #dc2626; }
         .question-num { font-size: 13px; color: #888; }
         .question-text { font-size: 16px; line-height: 1.6; margin-bottom: 20px; color: #1a1a2e; }
 
@@ -255,6 +256,7 @@
     <script>
     // ==================== 数据与状态 ====================
     let questions = [];
+    let disputedIds = [];
     let state = {
         page: 'home',
         chapter: null,
@@ -400,6 +402,7 @@
 
     function renderQuestionCard(q, isFav) {
         const isMulti = q.type === 'multi';
+        const isDisputed = disputedIds.includes(q.id);
         const optionKeys = Object.keys(q.options);
 
         return `<div class="question-layout">
@@ -407,6 +410,7 @@
                 <div class="question-card">
             <div class="question-meta">
                 <span class="tag ${isMulti ? 'multi' : ''}">${isMulti ? '多选' : '单选'}</span>
+                ${isDisputed ? '<span class="tag disputed"> 疑似错题</span>' : ''}
                 <span class="question-num">ID: ${q.id}</span>
             </div>
             <div class="question-text">${q.question.replace('(    )', '(____)')}</div>
@@ -528,6 +532,7 @@
             <div class="question-card">
                 <div class="question-meta">
                     <span class="tag ${isMulti ? 'multi' : ''}">${isMulti ? '多选' : '单选'}</span>
+                    ${disputedIds.includes(q.id) ? '<span class="tag disputed"> 疑似错题</span>' : ''}
                 </div>
                 <div class="question-text">${q.question.replace('(    )', '(____)')}</div>
                 <ul class="options-list">
@@ -897,6 +902,11 @@
             const resp = await fetch('data/questions.json');
             if (!resp.ok) throw new Error('加载题库失败');
             questions = await resp.json();
+            // 加载疑似错题ID列表
+            try {
+                const dResp = await fetch('data/disputed.json');
+                if (dResp.ok) disputedIds = await dResp.json();
+            } catch {}
             render();
         } catch (e) {
             app.innerHTML = `<div class="empty-state">
