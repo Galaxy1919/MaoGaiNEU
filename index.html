@@ -403,7 +403,7 @@
                 </label>
             </div>
             <div class="progress-top">
-                <span>${state.questionIndex + 1} / ${chQuestions.length}</span>
+                <span style="cursor:pointer;text-decoration:underline dotted;color:#4f46e5" onclick="jumpToQuestion()">${state.questionIndex + 1} / ${chQuestions.length}</span>
                 <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
                 <span>${sourceLabel}</span>
             </div>
@@ -676,9 +676,8 @@
     // ==================== 交互逻辑 ====================
     function navigate(page) {
         // 离开练习页时保存位置
-        if (state.page === 'practice' && state.chapter) {
-            lastPosition['ch' + state.chapter] = state.questionIndex;
-            saveAll();
+        if (state.page === 'practice') {
+            savePracticePosition();
         }
         state.page = page;
         state.selectedOptions = [];
@@ -752,6 +751,31 @@
         }
     }
 
+    function savePracticePosition() {
+        if (state.practiceSource === 'chapter') {
+            lastPosition['ch' + state.chapter] = state.questionIndex;
+        } else if (state.practiceSource === 'favorites') {
+            lastPosition['fav'] = state.questionIndex;
+        } else if (state.practiceSource === 'wrong') {
+            lastPosition['wrong'] = state.questionIndex;
+        }
+        saveAll();
+    }
+
+    function jumpToQuestion() {
+        const total = getPracticeQuestions().length;
+        const input = prompt(`跳转到第几题？(1-${total})`);
+        if (input === null) return;
+        const num = parseInt(input);
+        if (isNaN(num) || num < 1 || num > total) return;
+        state.questionIndex = num - 1;
+        state.selectedOptions = [];
+        state.answered = false;
+        state.showTip = false;
+        savePracticePosition();
+        render();
+    }
+
     function nextQuestion() {
         const chQuestions = getPracticeQuestions();
         if (state.questionIndex < chQuestions.length - 1) {
@@ -759,10 +783,7 @@
             state.selectedOptions = [];
             state.answered = false;
             state.showTip = false;
-            if (state.practiceSource === 'chapter') {
-                lastPosition['ch' + state.chapter] = state.questionIndex;
-            }
-            saveAll();
+            savePracticePosition();
             render();
         }
     }
@@ -773,10 +794,7 @@
             state.selectedOptions = [];
             state.answered = false;
             state.showTip = false;
-            if (state.practiceSource === 'chapter') {
-                lastPosition['ch' + state.chapter] = state.questionIndex;
-            }
-            saveAll();
+            savePracticePosition();
             render();
         }
     }
@@ -813,7 +831,7 @@
         if (favQuestions.length === 0) return;
         state.page = 'practice';
         state.practiceSource = 'favorites';
-        state.questionIndex = 0;
+        state.questionIndex = Math.min(lastPosition['fav'] || 0, favQuestions.length - 1);
         state.selectedOptions = [];
         state.answered = false;
         state.showTip = false;
@@ -825,7 +843,7 @@
         if (wrongQuestions.length === 0) return;
         state.page = 'practice';
         state.practiceSource = 'wrong';
-        state.questionIndex = 0;
+        state.questionIndex = Math.min(lastPosition['wrong'] || 0, wrongQuestions.length - 1);
         state.selectedOptions = [];
         state.answered = false;
         state.showTip = false;
