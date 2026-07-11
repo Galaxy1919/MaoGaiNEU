@@ -719,12 +719,12 @@
 
     function checkAnswer() {
         state.answered = true;
-        const chQuestions = getChapterQuestions(state.chapter);
+        const chQuestions = getPracticeQuestions();
         const q = chQuestions[state.questionIndex];
         const isCorrect = arraysEqual(state.selectedOptions.sort(), q.answer.sort());
 
         // 更新进度
-        const prog = getChapterProgress(state.chapter);
+        const prog = getChapterProgress(q.chapter);
         if (!prog.done.includes(q.id)) prog.done.push(q.id);
         if (isCorrect) {
             if (!prog.correct.includes(q.id)) prog.correct.push(q.id);
@@ -737,8 +737,7 @@
         }
 
         // 保存位置
-        lastPosition['ch' + state.chapter] = state.questionIndex;
-        saveAll();
+        savePracticePosition();
 
         // 答对自动下一题
         if (isCorrect && settings.autoNext) {
