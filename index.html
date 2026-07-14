@@ -293,7 +293,7 @@
     let favorites = storage.get('favorites', []);
     let wrongBook = storage.get('wrong', []);
     let progress = storage.get('progress', {});
-    let settings = storage.get('settings', { autoNext: true });
+    let settings = storage.get('settings', { autoNext: true, wrongAutoRemove: false });
     // 章节练习位置记忆
     let lastPosition = storage.get('lastPosition', {});  // { ch1: 5, ch2: 12, ... }
 
@@ -621,13 +621,20 @@
         app.innerHTML = renderNav() + `
             <div class="page-header">
                 <h2>错题本</h2>
-                <p>共 ${wrongQuestions.length} 题，答对后自动移出</p>
+                <p>共 ${wrongQuestions.length} 题</p>
+            </div>
+            <div class="settings-bar">
+                <label>
+                    <input type="checkbox" ${settings.wrongAutoRemove ? 'checked' : ''} onchange="toggleWrongAutoRemove(this.checked)">
+                    答对后自动移出
+                </label>
             </div>
             ${wrongQuestions.length === 0 ? '<div class="empty-state"><div class="icon">🎉</div><p>太棒了，没有错题！</p></div>' : `
             <button class="submit-btn" style="margin-bottom:16px" onclick="startWrongPractice()">开始刷错题</button>
-            ${wrongQuestions.map(q => `<div class="question-list-item" onclick="practiceQuestion(${q.id})">
-                <span class="q-text">${q.id}. ${q.question.replace('(    )', '____')}</span>
+            ${wrongQuestions.map(q => `<div class="question-list-item">
+                <span class="q-text" onclick="practiceQuestion(${q.id})" style="cursor:pointer">${q.id}. ${q.question.replace('(    )', '____')}</span>
                 <span class="tag ${q.type === 'multi' ? 'multi' : ''}">${q.type === 'multi' ? '多选' : '单选'}</span>
+                <span style="cursor:pointer;color:#ef4444;font-size:12px;margin-left:8px" onclick="removeWrong(${q.id})">✕</span>
             </div>`).join('')}`}`;
     }
 
@@ -728,8 +735,10 @@
         if (!prog.done.includes(q.id)) prog.done.push(q.id);
         if (isCorrect) {
             if (!prog.correct.includes(q.id)) prog.correct.push(q.id);
-            const wrongIdx = wrongBook.indexOf(q.id);
-            if (wrongIdx > -1) wrongBook.splice(wrongIdx, 1);
+            if (settings.wrongAutoRemove) {
+                const wrongIdx = wrongBook.indexOf(q.id);
+                if (wrongIdx > -1) wrongBook.splice(wrongIdx, 1);
+            }
         } else {
             if (!wrongBook.includes(q.id)) wrongBook.push(q.id);
             const correctIdx = prog.correct.indexOf(q.id);
@@ -809,6 +818,20 @@
     function toggleAutoNext(checked) {
         settings.autoNext = checked;
         saveAll();
+    }
+
+    function toggleWrongAutoRemove(checked) {
+        settings.wrongAutoRemove = checked;
+        saveAll();
+    }
+
+    function removeWrong(id) {
+        const idx = wrongBook.indexOf(id);
+        if (idx > -1) {
+            wrongBook.splice(idx, 1);
+            saveAll();
+            render();
+        }
     }
 
     function practiceQuestion(id) {
