@@ -381,56 +381,51 @@
     // 章节练习位置记忆
     let lastPosition = storage.get('lastPosition', {});  // { ch1: 5, ch2: 12, ... }
 
-    // ==================== 会员系统 ====================
+    // ==================== 会员系统（后端严格一次性版） ====================
     const AFDIAN_URL = 'https://ifdian.net/a/Galaxy1919';
     const MEMBER_PRICE = '¥ 5.00 / 月';
+    // API 基地址：Vercel 部署时用同源；本地开发直接打开 file:// 时会 fetch 失败但不影响非会员使用
+    const API_BASE = '';
 
-    // 兑换码校验（简单混淆，防止小白直接看源码）
-    // 生成新码：把明文用 btoa 编码后加入这个数组即可
-    // 例如：btoa('MG2025A1B2') 得到 'TUcyMDI1QTFCMg=='
-    const VALID_CODES = [
-        // 示例码（正式使用请替换成你在爱发电后台准备的码）
-        btoa('e2.71828'),
-    ];
-
-    // 签名密钥（改这个字符串，之前所有已激活会员都会失效，请勿轻易改动）
-    const SIGN_SALT = 'mg-neu-2026-p9xe2.7182818287k3jz-salt';
-
-    // 同步哈希函数（基于字符串，简易 djb2 变体 + salt），用于生成签名
-    function signPayload(payload) {
-        const str = JSON.stringify(payload) + '|' + SIGN_SALT;
-        let h1 = 5381, h2 = 52711;
-        for (let i = 0; i < str.length; i++) {
-            const c = str.charCodeAt(i);
-            h1 = ((h1 << 5) + h1 + c) >>> 0;   // h1 * 33 + c
-            h2 = ((h2 << 5) - h2 + c) >>> 0;   // h2 * 31 + c
-        }
-        return h1.toString(36) + '-' + h2.toString(36);
-    }
-
-    // 生成一个稳定的签名对象（顺序固定，避免 JSON.stringify 差异）
-    function buildSignPayload(m) {
-        return {
-            active: m.active === true,
-            code: m.code || '',
-            activatedAt: m.activatedAt || 0
-        };
-    }
-
-    let memberState = storage.get('member', { active: false, code: '', activatedAt: 0, sig: '' });
-    let modalState = { open: false, view: 'intro', error: '', success: '' };
+    // memberState: { token, expiresAt, activatedAt, userId, remainDays? }
+    let memberState = storage.get('member', null);
+    let modalState = { open: false, view: 'intro', error: '', success: '', loading: false };
 
     function isMember() {
-        if (!memberState || memberState.active !== true) return false;
-        // 校验签名，防止用户在 F12 手动改 active: true
-        const expected = signPayload(buildSignPayload(memberState));
-        if (memberState.sig !== expected) {
-            // 签名不匹配 → 静默失效
-            memberState = { active: false, code: '', activatedAt: 0, sig: '' };
-            storage.set('member', memberState);
+        if (!memberState || !memberState.token) return false;
+        if (!memberState.expiresAt || memberState.expiresAt < Date.now()) {
+            // 本地已过期
+            memberState = null;
+            storage.set('member', null);
             return false;
         }
         return true;
+    }
+
+    // 每次加载页面时异步校验 token（不阻塞渲染）
+    async function verifyMemberOnLoad() {
+        if (!memberState || !memberState.token) return;
+        try {
+            const resp = await fetch(API_BASE + '/api/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: memberState.token }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                memberState.expiresAt = data.expiresAt;
+                memberState.remainDays = data.remainDays;
+                storage.set('member', memberState);
+            } else {
+                // 服务端判定无效（过期/被封禁）→ 清空
+                memberState = null;
+                storage.set('member', null);
+                render();
+            }
+        } catch (e) {
+            // 网络失败：保留本地状态，不打断离线使用
+            console.warn('verify: network unavailable, keeping local state', e);
+        }
     }
 
     function openMemberModal(view) {
@@ -466,7 +461,7 @@
         renderModal();
     }
 
-    function redeemCode() {
+    async function redeemCode() {
         const input = document.getElementById('redeem-input');
         if (!input) return;
         const raw = input.value.trim();
@@ -475,21 +470,42 @@
             renderModal();
             return;
         }
-        const encoded = btoa(raw);
-        if (VALID_CODES.includes(encoded)) {
-            const payload = { active: true, code: raw, activatedAt: Date.now() };
-            const sig = signPayload(buildSignPayload(payload));
-            memberState = { ...payload, sig };
-            storage.set('member', memberState);
-            modalState.view = 'success';
-            modalState.error = '';
-            renderModal();
-            setTimeout(() => {
-                closeMemberModal();
-                render();
-            }, 1800);
-        } else {
-            modalState.error = '兑换码无效，请检查后重试';
+        if (modalState.loading) return;
+        modalState.loading = true;
+        modalState.error = '';
+        renderModal();
+
+        try {
+            const resp = await fetch(API_BASE + '/api/redeem', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: raw }),
+            });
+            const data = await resp.json();
+            modalState.loading = false;
+
+            if (resp.ok && data.ok) {
+                memberState = {
+                    token: data.token,
+                    expiresAt: data.expiresAt,
+                    activatedAt: Date.now(),
+                    userId: data.userId,
+                };
+                storage.set('member', memberState);
+                modalState.view = 'success';
+                modalState.error = '';
+                renderModal();
+                setTimeout(() => {
+                    closeMemberModal();
+                    render();
+                }, 1800);
+            } else {
+                modalState.error = data.error || '兑换失败，请稍后重试';
+                renderModal();
+            }
+        } catch (e) {
+            modalState.loading = false;
+            modalState.error = '网络错误，请检查网络后重试';
             renderModal();
         }
     }
@@ -527,10 +543,12 @@
                     <span class="close-x" onclick="closeMemberModal()">×</span>
                     <h3>🎫 输入兑换码</h3>
                     <p class="sub">付款后你会在爱发电收到兑换码</p>
-                    <input type="text" id="redeem-input" class="code-input">
+                    <input type="text" id="redeem-input" class="code-input" ${modalState.loading ? 'disabled' : ''}>
                     ${modalState.error ? `<div class="error-msg">${modalState.error}</div>` : ''}
-                    <button class="modal-btn primary" onclick="redeemCode()">立即激活</button>
-                    <button class="modal-btn secondary" onclick="backToIntro()">← 返回</button>
+                    <button class="modal-btn primary" onclick="redeemCode()" ${modalState.loading ? 'disabled' : ''}>
+                        ${modalState.loading ? '⏳ 正在验证...' : '立即激活'}
+                    </button>
+                    <button class="modal-btn secondary" onclick="backToIntro()" ${modalState.loading ? 'disabled' : ''}>← 返回</button>
                 </div>
             </div>`;
             setTimeout(() => {
@@ -612,9 +630,15 @@
             { id: 'search', label: '搜索' },
             { id: 'stats', label: '统计' },
         ];
-        const memberHtml = isMember()
-            ? `<span class="member-badge">👑 会员</span>`
-            : `<button class="member-btn" onclick="openMemberModal()">✨ 开通会员</button>`;
+        let memberHtml;
+        if (isMember()) {
+            const days = memberState.remainDays != null
+                ? memberState.remainDays
+                : Math.ceil((memberState.expiresAt - Date.now()) / 86400000);
+            memberHtml = `<span class="member-badge" title="剩余 ${days} 天">👑 会员 · ${days}天</span>`;
+        } else {
+            memberHtml = `<button class="member-btn" onclick="openMemberModal()">✨ 开通会员</button>`;
+        }
         return `<div class="nav">${pages.map(p =>
             `<button class="nav-btn ${state.page === p.id || (state.page === 'practice' && p.id === 'home') ? 'active' : ''}"
                      onclick="navigate('${p.id}')">${p.label}</button>`
@@ -1299,6 +1323,8 @@
             // 用完立即清空全局变量，减少 F12 直接读取的可能性
             try { delete window.__MG_DATA__; } catch (e) { window.__MG_DATA__ = null; }
             render();
+            // 异步校验会员 token（不阻塞首屏）
+            verifyMemberOnLoad();
         } catch (e) {
             app.innerHTML = `<div class="empty-state">
                 <div class="icon">⚠️</div>

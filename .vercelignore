@@ -16,3 +16,6 @@ __pycache__/
 # 构建脚本产物（如果有）
 build/
 dist/
+
+# 兑换码明文文件（绝对不能部署！）
+data/codes-*.txt
