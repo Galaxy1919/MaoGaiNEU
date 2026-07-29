@@ -237,6 +237,86 @@
             font-size: 10px; background: #f5f5f5; padding: 2px 6px; border-radius: 3px;
         }
 
+        /* 会员系统样式 */
+        .member-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 4px; font-size: 12px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff;
+            margin-left: 8px;
+        }
+        .member-btn {
+            padding: 6px 12px; border: none; border-radius: 8px; cursor: pointer;
+            font-size: 13px; margin-left: auto;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff;
+            transition: transform 0.2s;
+        }
+        .member-btn:hover { transform: translateY(-1px); }
+
+        .modal-mask {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); display: flex; align-items: center;
+            justify-content: center; z-index: 1000;
+        }
+        .modal {
+            background: #fff; border-radius: 16px; padding: 28px;
+            width: 90%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .modal h3 { font-size: 20px; margin-bottom: 8px; color: #1a1a2e; }
+        .modal .sub { font-size: 13px; color: #888; margin-bottom: 20px; }
+        .modal .price-box {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border-radius: 12px; padding: 16px; margin-bottom: 16px; text-align: center;
+        }
+        .modal .price-box .price { font-size: 32px; font-weight: 700; color: #92400e; }
+        .modal .price-box .price small { font-size: 14px; font-weight: 400; }
+        .modal .benefit-list {
+            list-style: none; margin: 16px 0;
+        }
+        .modal .benefit-list li {
+            padding: 8px 0; font-size: 14px; color: #444;
+            border-bottom: 1px dashed #f0f2f5;
+        }
+        .modal .benefit-list li:last-child { border-bottom: none; }
+        .modal .modal-btn {
+            display: block; width: 100%; padding: 12px; margin-top: 8px;
+            border: none; border-radius: 8px; font-size: 15px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .modal .modal-btn.primary {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff;
+        }
+        .modal .modal-btn.primary:hover { transform: translateY(-1px); }
+        .modal .modal-btn.secondary {
+            background: #f0f2f5; color: #555; margin-top: 12px;
+        }
+        .modal .code-input {
+            width: 100%; padding: 12px; border: 2px solid #f0f2f5;
+            border-radius: 8px; font-size: 14px; outline: none;
+            margin-top: 16px; letter-spacing: 1px;
+        }
+        .modal .code-input:focus { border-color: #4f46e5; }
+        .modal .close-x {
+            float: right; cursor: pointer; color: #aaa;
+            font-size: 20px; line-height: 1;
+        }
+        .modal .close-x:hover { color: #666; }
+        .modal .error-msg { color: #ef4444; font-size: 13px; margin-top: 8px; }
+        .modal .success-msg { color: #10b981; font-size: 13px; margin-top: 8px; }
+
+        /* 解析锁定态 */
+        .tip-locked {
+            text-align: center; padding: 24px 12px;
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border-radius: 8px; margin-top: 8px;
+        }
+        .tip-locked .lock-icon { font-size: 36px; margin-bottom: 8px; }
+        .tip-locked p { font-size: 13px; color: #92400e; margin-bottom: 12px; }
+        .tip-locked .unlock-btn {
+            padding: 8px 20px; border: none; border-radius: 6px;
+            background: #f59e0b; color: #fff; cursor: pointer; font-size: 13px;
+        }
+        .tip-locked .unlock-btn:hover { background: #d97706; }
+
         @media (max-width: 900px) {
             .question-layout { flex-direction: column; }
             .tip-panel { width: 100%; position: static; }
@@ -253,6 +333,9 @@
 </head>
 <body>
     <div class="container" id="app"></div>
+
+    <!-- 加密题库（build_data.py 生成，请勿手动编辑） -->
+    <script src="data/bundle.dat.js"></script>
 
     <script>
     // ==================== 数据与状态 ====================
@@ -297,6 +380,178 @@
     let settings = storage.get('settings', { autoNext: true, wrongAutoRemove: false });
     // 章节练习位置记忆
     let lastPosition = storage.get('lastPosition', {});  // { ch1: 5, ch2: 12, ... }
+
+    // ==================== 会员系统 ====================
+    const AFDIAN_URL = 'https://ifdian.net/a/Galaxy1919';
+    const MEMBER_PRICE = '¥ 5.00 / 月';
+
+    // 兑换码校验（简单混淆，防止小白直接看源码）
+    // 生成新码：把明文用 btoa 编码后加入这个数组即可
+    // 例如：btoa('MG2025A1B2') 得到 'TUcyMDI1QTFCMg=='
+    const VALID_CODES = [
+        // 示例码（正式使用请替换成你在爱发电后台准备的码）
+        btoa('e2.71828'),
+    ];
+
+    // 签名密钥（改这个字符串，之前所有已激活会员都会失效，请勿轻易改动）
+    const SIGN_SALT = 'mg-neu-2026-p9xe2.7182818287k3jz-salt';
+
+    // 同步哈希函数（基于字符串，简易 djb2 变体 + salt），用于生成签名
+    function signPayload(payload) {
+        const str = JSON.stringify(payload) + '|' + SIGN_SALT;
+        let h1 = 5381, h2 = 52711;
+        for (let i = 0; i < str.length; i++) {
+            const c = str.charCodeAt(i);
+            h1 = ((h1 << 5) + h1 + c) >>> 0;   // h1 * 33 + c
+            h2 = ((h2 << 5) - h2 + c) >>> 0;   // h2 * 31 + c
+        }
+        return h1.toString(36) + '-' + h2.toString(36);
+    }
+
+    // 生成一个稳定的签名对象（顺序固定，避免 JSON.stringify 差异）
+    function buildSignPayload(m) {
+        return {
+            active: m.active === true,
+            code: m.code || '',
+            activatedAt: m.activatedAt || 0
+        };
+    }
+
+    let memberState = storage.get('member', { active: false, code: '', activatedAt: 0, sig: '' });
+    let modalState = { open: false, view: 'intro', error: '', success: '' };
+
+    function isMember() {
+        if (!memberState || memberState.active !== true) return false;
+        // 校验签名，防止用户在 F12 手动改 active: true
+        const expected = signPayload(buildSignPayload(memberState));
+        if (memberState.sig !== expected) {
+            // 签名不匹配 → 静默失效
+            memberState = { active: false, code: '', activatedAt: 0, sig: '' };
+            storage.set('member', memberState);
+            return false;
+        }
+        return true;
+    }
+
+    function openMemberModal(view) {
+        modalState.open = true;
+        modalState.view = view || 'intro';
+        modalState.error = '';
+        modalState.success = '';
+        renderModal();
+    }
+
+    function closeMemberModal() {
+        modalState.open = false;
+        renderModal();
+    }
+
+    function goPurchase() {
+        if (AFDIAN_URL === 'YOUR_AFDIAN_URL') {
+            alert('提示：请在 index.html 中把 AFDIAN_URL 替换为你的爱发电主页链接');
+            return;
+        }
+        window.open(AFDIAN_URL, '_blank');
+    }
+
+    function switchToRedeem() {
+        modalState.view = 'redeem';
+        modalState.error = '';
+        renderModal();
+    }
+
+    function backToIntro() {
+        modalState.view = 'intro';
+        modalState.error = '';
+        renderModal();
+    }
+
+    function redeemCode() {
+        const input = document.getElementById('redeem-input');
+        if (!input) return;
+        const raw = input.value.trim();
+        if (!raw) {
+            modalState.error = '请输入兑换码';
+            renderModal();
+            return;
+        }
+        const encoded = btoa(raw);
+        if (VALID_CODES.includes(encoded)) {
+            const payload = { active: true, code: raw, activatedAt: Date.now() };
+            const sig = signPayload(buildSignPayload(payload));
+            memberState = { ...payload, sig };
+            storage.set('member', memberState);
+            modalState.view = 'success';
+            modalState.error = '';
+            renderModal();
+            setTimeout(() => {
+                closeMemberModal();
+                render();
+            }, 1800);
+        } else {
+            modalState.error = '兑换码无效，请检查后重试';
+            renderModal();
+        }
+    }
+
+    function renderModal() {
+        let root = document.getElementById('member-modal-root');
+        if (!root) {
+            root = document.createElement('div');
+            root.id = 'member-modal-root';
+            document.body.appendChild(root);
+        }
+        if (!modalState.open) { root.innerHTML = ''; return; }
+
+        if (modalState.view === 'intro') {
+            root.innerHTML = `<div class="modal-mask" onclick="if(event.target===this)closeMemberModal()">
+                <div class="modal">
+                    <span class="close-x" onclick="closeMemberModal()">×</span>
+                    <h3>✨ 开通会员</h3>
+                    <p class="sub">支持项目持续更新，解锁全部题目解析</p>
+                    <div class="price-box">
+                        <div class="price">${MEMBER_PRICE}</div>
+                    </div>
+                    <ul class="benefit-list">
+                        <li>✅ 解锁全部题目解析</li>
+                        <li>✅ 支持项目持续维护</li>
+                        <li>✅ 数据永久本地保存</li>
+                    </ul>
+                    <button class="modal-btn primary" onclick="goPurchase()">前往爱发电支付</button>
+                    <button class="modal-btn secondary" onclick="switchToRedeem()">我已有兑换码</button>
+                </div>
+            </div>`;
+        } else if (modalState.view === 'redeem') {
+            root.innerHTML = `<div class="modal-mask" onclick="if(event.target===this)closeMemberModal()">
+                <div class="modal">
+                    <span class="close-x" onclick="closeMemberModal()">×</span>
+                    <h3>🎫 输入兑换码</h3>
+                    <p class="sub">付款后你会在爱发电收到兑换码</p>
+                    <input type="text" id="redeem-input" class="code-input">
+                    ${modalState.error ? `<div class="error-msg">${modalState.error}</div>` : ''}
+                    <button class="modal-btn primary" onclick="redeemCode()">立即激活</button>
+                    <button class="modal-btn secondary" onclick="backToIntro()">← 返回</button>
+                </div>
+            </div>`;
+            setTimeout(() => {
+                const inp = document.getElementById('redeem-input');
+                if (inp) {
+                    inp.focus();
+                    inp.addEventListener('keydown', e => {
+                        if (e.key === 'Enter') redeemCode();
+                    });
+                }
+            }, 50);
+        } else if (modalState.view === 'success') {
+            root.innerHTML = `<div class="modal-mask">
+                <div class="modal" style="text-align:center">
+                    <div style="font-size:56px;margin-bottom:12px">🎉</div>
+                    <h3>激活成功！</h3>
+                    <p class="sub" style="margin-top:8px">全部权益已解锁，感谢你的支持</p>
+                </div>
+            </div>`;
+        }
+    }
 
     function saveAll() {
         storage.set('favorites', favorites);
@@ -357,10 +612,13 @@
             { id: 'search', label: '搜索' },
             { id: 'stats', label: '统计' },
         ];
+        const memberHtml = isMember()
+            ? `<span class="member-badge">👑 会员</span>`
+            : `<button class="member-btn" onclick="openMemberModal()">✨ 开通会员</button>`;
         return `<div class="nav">${pages.map(p =>
             `<button class="nav-btn ${state.page === p.id || (state.page === 'practice' && p.id === 'home') ? 'active' : ''}"
                      onclick="navigate('${p.id}')">${p.label}</button>`
-        ).join('')}</div>`;
+        ).join('')}${memberHtml}</div>`;
     }
 
     function renderHome() {
@@ -482,20 +740,48 @@
     function renderTipPanel(q) {
         const hasTip = q.explanation && q.explanation.length > 0;
         const isShowing = state.showTip;
+        const member = isMember();
+
+        // 无解析内容
+        if (!hasTip) {
+            return `<div class="tip-panel">
+                <div class="tip-header">
+                    <span class="icon">📖</span>
+                    <span>解析与笔记</span>
+                </div>
+                <div class="tip-empty">
+                    <div class="icon">✏️</div>
+                    <p>暂无解析</p>
+                </div>
+            </div>`;
+        }
+
+        // 非会员锁定态
+        if (!member) {
+            return `<div class="tip-panel">
+                <div class="tip-header">
+                    <span class="icon">📖</span>
+                    <span>解析与笔记</span>
+                </div>
+                <div class="tip-locked">
+                    <div class="lock-icon">🔒</div>
+                    <p>本题含解析，开通会员即可查看</p>
+                    <button class="unlock-btn" onclick="openMemberModal()">✨ 开通会员</button>
+                </div>
+            </div>`;
+        }
+
+        // 会员正常显示
         return `<div class="tip-panel">
             <div class="tip-header">
                 <span class="icon">📖</span>
                 <span>解析与笔记</span>
+                <span class="member-badge" style="margin-left:auto">👑</span>
             </div>
-            ${!hasTip ? `<div class="tip-empty">
-                <div class="icon">✏️</div>
-                <p>暂无解析</p>
-            </div>` : `
-                <button class="tip-btn ${isShowing ? 'active' : ''}" onclick="toggleTip()">
-                    ${isShowing ? '▾ 收起解析' : '▸ 查看解析'}
-                </button>
-                <div class="tip-content ${isShowing ? '' : 'hidden'}">${q.explanation}</div>
-            `}
+            <button class="tip-btn ${isShowing ? 'active' : ''}" onclick="toggleTip()">
+                ${isShowing ? '▾ 收起解析' : '▸ 查看解析'}
+            </button>
+            <div class="tip-content ${isShowing ? '' : 'hidden'}">${q.explanation}</div>
         </div>`;
     }
 
@@ -985,23 +1271,39 @@
         return a.every((v, i) => v === b[i]);
     }
 
+    // ==================== 题库解密 ====================
+    // 加密密钥（必须与 modules/build_data.py 里的 CRYPT_KEY 一致）
+    const CRYPT_KEY = 'mg-neu-2026-vault-key-9x7k3jz';
+
+    function decryptBundle(encrypted, key) {
+        // Base64 解码 → XOR 解密
+        const binary = atob(encrypted);
+        const keyBytes = new TextEncoder().encode(key);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i) ^ keyBytes[i % keyBytes.length];
+        }
+        return new TextDecoder('utf-8').decode(bytes);
+    }
+
     // ==================== 初始化 ====================
     async function init() {
         try {
-            const resp = await fetch('data/questions.json');
-            if (!resp.ok) throw new Error('加载题库失败');
-            questions = await resp.json();
-            // 加载疑似错题ID列表
-            try {
-                const dResp = await fetch('data/disputed.json');
-                if (dResp.ok) disputedIds = await dResp.json();
-            } catch {}
+            if (typeof window.__MG_DATA__ !== 'string') {
+                throw new Error('题库文件未加载');
+            }
+            const plain = decryptBundle(window.__MG_DATA__, CRYPT_KEY);
+            const bundle = JSON.parse(plain);
+            questions = bundle.questions || [];
+            disputedIds = bundle.disputed || [];
+            // 用完立即清空全局变量，减少 F12 直接读取的可能性
+            try { delete window.__MG_DATA__; } catch (e) { window.__MG_DATA__ = null; }
             render();
         } catch (e) {
             app.innerHTML = `<div class="empty-state">
                 <div class="icon">⚠️</div>
                 <p>加载题库失败</p>
-                <p style="font-size:12px;margin-top:8px;color:#999">请确保 data/questions.json 文件存在</p>
+                <p style="font-size:12px;margin-top:8px;color:#999">${e.message || '数据文件不完整'}</p>
             </div>`;
         }
     }

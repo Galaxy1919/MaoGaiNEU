@@ -1,0 +1,18 @@
+# 题库明文不部署到 Vercel（线上只保留加密后的 bundle.dat.js）
+data/questions.json
+data/disputed.json
+data/questionBank.txt
+
+# Python 源码不部署
+modules/
+*.py
+*.pyc
+__pycache__/
+
+# 开发工具
+.idea/
+.vscode/
+
+# 构建脚本产物（如果有）
+build/
+dist/
